@@ -17,3 +17,5 @@ Il programma contiene una interfaccia utente, o nello specifico una Web App crea
 tramite il framework Flask, il quale permette di eseguire le funzionalità descritte sopra
 tramite gli appositi bottoni. La procedura dei singoli bottoni è descritta nel manuale di
 Twitter Scraper. 
+
+Umberto Nocerino; Francesco Martinelli
