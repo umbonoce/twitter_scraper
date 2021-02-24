@@ -26,4 +26,4 @@ tramite il framework Flask, il quale permette di eseguire le funzionalità descr
 tramite gli appositi bottoni. La procedura dei singoli bottoni è descritta nel manuale di
 Twitter Scraper. 
 
-Umberto Nocerino; Francesco Martinelli
+Umberto Nocerino; Francesco Martinelli.
