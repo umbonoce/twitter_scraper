@@ -5,30 +5,34 @@ import logging
 import time
 import os
 import zipfile
-import socket
-import fcntl
-import struct
 from pathlib import Path
 from requests import get
 from flask import Flask, session, redirect, request, render_template, send_file, flash
 
-api_key = 'xxx'
-secret_key = 'xxx'
+
+#api Twitter
+api_key = 'bPAcN7StuJfY830Z9hDs7en0v'
+secret_key = 'f1zHVgP9JTja9gjvC6IFVvZLJW5VAzJjh3AUX7a4cMXsvTX26j'
 callback = 'http://framartin11.pythonanywhere.com/callback'
 app = Flask(__name__, static_folder='/')
-app.secret_key = 'xxx'
+app.secret_key = 'super secret key'
 app.config['SESSION_TYPE'] = 'filesystem'
-md5 = hashlib.md5()
-sha1 = hashlib.sha1()
 logging.basicConfig(filename="/home/framartin11/mysite/log.log", filemode='a')
 
+
+#route di autenticazione con controllo try-except se la pagina non riesce ad accedere ai server Twitter
 @app.route('/')
 def auth():
     auth = tweepy.OAuthHandler(api_key, secret_key, callback)
-    url = auth.get_authorization_url()
-    session['request_token'] = auth.request_token
-    return redirect(url)
+    try:
+        url = auth.get_authorization_url()
+        session['request_token'] = auth.request_token
+        return redirect(url)
+    except tweepy.TweepError:
+        return render_template('503.html')
 
+#route del callback per autenticazione account twitter: una volta autenticati avviene il re-indirizzamento alla schermata
+#di benvenuto della piattaforma
 @app.route('/callback')
 def twitter_callback():
     request_token = session['request_token']
@@ -40,12 +44,16 @@ def twitter_callback():
     session['token'] = (auth.access_token, auth.access_token_secret)
     return redirect('/home')
 
+#route di benvenuto collegata al template html index ( che contiene i pulsanti con le varie funzionalità)
 @app.route('/home', methods=['GET', 'POST'])
 def welcome():
     screen_name, api = remind_auth()
     inizialize_session(screen_name)
     return render_template("index.html", name=screen_name)
 
+#funzione collegata alla route che permette di visualizzare tutte le interazioni dell'utente autenticato
+#la funzione crea un dataframe pandas (contente le varie colonne Id, data, text, ecc) e successivamente viene salvato su un file csv
+#le operazioni effettuate vengono salvate nel file di log
 @app.route('/allstatus', methods=['GET', 'POST'])
 def all_status():
     name, api = remind_auth()
@@ -62,6 +70,9 @@ def all_status():
     ulog(name, "All Status added")
     return welcome()
 
+#funzione collegata alla route che permette di visualizzare tutte i direct message dell'utente autenticato
+#la funzione crea un dataframe pandas (contente le varie colonne Id, timestamp, id, ecc) e successivamente viene salvato su un file csv
+#le operazioni effettuate vengono salvate nel file di log
 @app.route('/alldms', methods=['GET', 'POST'])
 def allmessages():
     name, api = remind_auth()
@@ -78,6 +89,10 @@ def allmessages():
     ulog(name, "All Direct Messages added")
     return redirect("/home")
 
+
+#funzione collegata alla route che permette di visualizzare tutte le interazioni dell'utente autenticato
+#la funzione crea un dataframe pandas (contente le varie colonne Id, data, id, ecc) e successivamente viene salvato su un file csv
+#le operazioni effettuate vengono salvate nel file di log
 @app.route('/interactions', methods=['GET', 'POST'])
 def interactions():
     name, api = remind_auth()
@@ -103,6 +118,10 @@ def interactions():
     ulog(name, f"Interactions status with {username} added")
     return welcome()
 
+
+#funzione collegata alla route che permette di visualizzare tutti i direct message con un determinato utente
+#la funzione crea un dataframe pandas (contente le varie colonne Id, timestamp, id, ecc) e successivamente viene salvato su un file csv
+#le operazioni effettuate vengono salvate nel file di log
 @app.route('/dms', methods=['GET', 'POST'])
 def messages():
     name, api = remind_auth()
@@ -124,6 +143,10 @@ def messages():
     flash(f"Tutti i direct message con {username} aggiunti")
     return welcome()
 
+
+#funzione collegata alla route che permette di visualizzare tutte le relazioni dell'utente autenticato (is followed, is blocked, ecc)
+#la funzione crea un dataframe pandas (contente le varie colonne nome,id, is following, ecc) e successivamente viene salvato su un file csv
+#le operazioni effettuate vengono salvate nel file di log
 @app.route('/relationship', methods=['GET', 'POST'])
 def relationship():
     screen_name, api = remind_auth()
@@ -141,6 +164,9 @@ def relationship():
     flash(f"Tutte le relationship con {username} aggiunte")
     return welcome()
 
+#funzione che permette di scaricare tutti i file, creando un file zip che contiene appunto tutti i file scaricati precedentemente
+#a questo file zippato viene effettuato l'hash con i 2 algoritmi MD5 e HASH1
+#la funzione contiene anche un controllo nel caso in cui l' operazione non è andata a buon fine
 @app.route('/download', methods=['GET', 'POST'])
 def download():
     name, api = remind_auth()
@@ -149,20 +175,22 @@ def download():
     path=f"/home/framartin11/mysite/{name}"
     ulog(name, "Package Download")
     make_zipfile(file, path)
+    md5 = hashlib.md5()
+    sha1 = hashlib.sha1()
     ulog(name, "MD5 hash created")
     logging.info("MD5:")
     with open(file, "rb") as file_object:
         for el in file_object:
             md5.update(el)
-    uhash(name, md5.hexdigest())
     logging.info(md5.hexdigest())
+    uhash(name, md5.hexdigest())
     ulog(name, "SHA1 hash created")
     logging.info("SHA1:")
     with open(file, "rb") as file_object:
         for el in file_object:
             sha1.update(el)
-    uhash(name, sha1.hexdigest())
     logging.info(sha1.hexdigest())
+    uhash(name, sha1.hexdigest())
     for f in Path(path).glob('*.csv'):
         try:
             f.unlink()
@@ -175,10 +203,13 @@ def download():
             print("Error: %s : %s" % (f, e.strerror))
     return send_file(f"/home/framartin11/mysite/{name}_{day}.zip", as_attachment=1)
 
+#funzione collegata alla route che consente di scaricare il file di log che conterrà tutte le informazioni
+#relative alle azioni dell'utente autenticato, compreso il message digest sia di MD5 che di SHA1
 @app.route('/log',methods=['GET', 'POST'])
 def dload():
     name, api = remind_auth()
     day = time.strftime("%Y%m%d")
+    os.remove(f"/home/framartin11/mysite/{name}_{day}.zip")
     return send_file(f"/home/framartin11/mysite/{name}_{day}.log", as_attachment=1)
 
 def inizialize_session(name):
@@ -186,23 +217,27 @@ def inizialize_session(name):
         os.makedirs(f"/home/framartin11/mysite/{name}/")
     day = time.strftime("%Y%m%d")
     utc = time.strftime("%m-%d-%Y %H : %M : %S")
-    log = f"/home/framartin11/mysite/{name}/{name}_{day}.log"
+    log = f"/home/framartin11/mysite/{name}_{day}.log"
     if os.path.exists(log):
         os.remove(log)
     ulog(name, f"Session started at {utc} UTC; ->\nTwitter Authentication")
+    return 1
 
+#configurazione file di log
 def ulog(name, message):
     day = time.strftime("%Y%m%d")
     utc = time.strftime("%m-%d-%Y %H : %M : %S")
     f = open(f"/home/framartin11/mysite/{name}_{day}.log", "a")
     f.write(message + " at " + utc + " UTC ->\n");
     f.close()
+    return 1
 
 def uhash(name, message):
     day = time.strftime("%Y%m%d")
     f = open(f"/home/framartin11/mysite/{name}_{day}.log", "a")
     f.write(message + "\n");
     f.close()
+    return 1
 
 def remind_auth():
     token, token_secret = session['token']
@@ -216,10 +251,7 @@ def log(file):
     fil = file.replace("/home/framartin11/mysite", "")
     logging.info(fil +  " ip: " +  get('https://api.ipify.org').text + " Date: " + time.strftime("%d/%m/%Y") + " at " + time.strftime("%H:%M:%S"))
 
-def get_ip_address(ifname):
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', ifname[:15]))[20:24])
-
+#funzione file di zip
 def make_zipfile(output_filename, source_dir):
     relroot = os.path.abspath(os.path.join(source_dir, os.pardir))
     with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_DEFLATED) as zip:
